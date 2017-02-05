@@ -1,7 +1,7 @@
 var userPool = new AWSCognito.CognitoIdentityServiceProvider.CognitoUserPool(poolData);
 
 var WindowHelper = {
-    windowIds: ['register', 'mfa_confirmation', 'login', 'logged_in'],
+    windowIds: ['register', 'register_confirmation', 'mfa_confirmation', 'login', 'logged_in'],
 
     hideAll: () => {
         $.each(WindowHelper.windowIds, (idx, windowId) => {
@@ -55,6 +55,7 @@ var Register = function(){
     };
 
     this.signUp = (userName, userPassword, attributeList) => {
+        console.log("sign up")
         userPool.signUp(userName, userPassword, attributeList, null, function(err, result){
             if (err) {
                 alert(err);
@@ -62,26 +63,23 @@ var Register = function(){
             }
             cognitoUser = result.user;
 
-            if(MFARequired){ new MFAConfirmation(cognitoUser) };
+            if(confirmRequired){ new RegisterConfirmation(cognitoUser) };
         }.bind(this));
     };
 
     this.init();
 };
 
-var MFAConfirmation = function(cognitoUser, method) {
+var RegisterConfirmation = function(cognitoUser, method) {
 
     this.init = () => {
-        WindowHelper.show('mfa_confirmation');
-        $('#mfa_confirmation #user_name').text(cognitoUser.getUsername());
+        WindowHelper.show('register_confirmation');
+        $('#register_confirmation #user_name').text(cognitoUser.getUsername());
         $('#confirmBtn').click(function(){
             var code = $('#confirmation_input').val();
 
-            if(method == 'login'){
-                this.sendLoginCode(code);
-            }else{
-                this.confirm(code);
-            };
+            this.confirm(code);
+
         }.bind(this));
     };
 
@@ -94,17 +92,6 @@ var MFAConfirmation = function(cognitoUser, method) {
             new Login();
         }.bind(this));
     };
-
-    this.sendLoginCode = (mfaCode) => {
-        cognitoUser.sendMFACode(mfaCode, {
-            onSuccess: function (result) {
-                new LoggedIn(cognitoUser, result);
-            },
-            onFailure: function(err) {
-                alert(err);
-            }
-        });
-    }
 
     this.init();
 }
@@ -182,7 +169,7 @@ var AWSInitialize = function(token){
     });
 }
 
-var LoggedIn = function(cognitoUser, session) {
+var LoggedIn = function(cognitoUser, session){
     this.init = () => {
         AWSInitialize(session.getIdToken().getJwtToken());
 
@@ -191,10 +178,34 @@ var LoggedIn = function(cognitoUser, session) {
 
         this.listUserAttributes();
         this.listUserDevices();
+        this.testAPI();
 
         $('#logged_in #signOutBtn').click(function(){
             cognitoUser.globalSignOut();
             new Login();
+        });
+    };
+
+    this.testAPI = () => {
+        var storyBox = $('#story');
+        storyBox.html('<p>Failed to load...</p>');
+
+        cognitoUser.getSession(function(err, session) {
+            if (err) {
+               alert(err);
+                return;
+            }
+            console.log('session validity: ' + session.isValid());
+            console.log(session.getIdToken().jwtToken)
+
+            fetch("https://dean.wethetweeple.org/content/21202", {
+                method: 'get',
+                headers: {
+                     //'Authorization': 'Basic '+btoa('username:password'),
+                     'Authorization': session.getIdToken().jwtToken,
+                     'Content-Type': 'application/json'
+                   },
+            }).then(res => {res.json().then(data => storyBox.html('<p>Loaded: ' + data["Title"] + '</p>'));})
         });
     };
 
